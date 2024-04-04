@@ -2,6 +2,7 @@ import json
 import logging
 import time
 from pathlib import Path
+import json
 
 import pandas as pd
 import requests
@@ -14,11 +15,13 @@ logger = logging.getLogger("scripts")
 
 
 def send_question_to_target(question: str, truth: str, target_url: str, parameters: dict = {}, raise_error=False):
+    # generate a random conversation ID
+    random_guid = "00000000-0000-0000-0000-000000000000"
+    random_guid = random_guid[:15] + str(int(time.time() * 1000))
     headers = {"Content-Type": "application/json"}
     body = {
-        "messages": [{"content": question, "role": "user"}],
-        "stream": False,
-        "context": parameters,
+        "conversation_id": random_guid,
+        "messages": [{"content": question, "role": "user"}]
     }
     try:
         r = requests.post(target_url, headers=headers, json=body)
@@ -28,9 +31,24 @@ def send_question_to_target(question: str, truth: str, target_url: str, paramete
         response_dict = r.json()
 
         try:
-            answer = response_dict["choices"][0]["message"]["content"]
-            data_points = response_dict["choices"][0]["context"]["data_points"]["text"]
-            context = "\n\n".join(data_points)
+            answer = response_dict["choices"][0]["messages"][1]["content"]
+            data_points = response_dict["choices"][0]["messages"][0]["content"]
+            data_points_json = data_points
+            data_points_dict = json.loads(data_points_json)
+            formatted_output = ""
+
+            for citation in data_points_dict["citations"]:
+                filename = citation["title"]
+                content = citation["content"]
+                
+                content_cleaned = " ".join(content.split())
+                
+                formatted_output += f"{filename}:{content_cleaned}\n\n"
+
+            if formatted_output.endswith("\n\n"):
+                formatted_output = formatted_output[:-2]
+
+            context = formatted_output
         except Exception:
             raise ValueError(
                 "Response does not adhere to the expected schema. "
